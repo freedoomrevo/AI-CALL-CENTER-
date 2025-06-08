@@ -1,0 +1,121 @@
+name: Security Scanning
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Run every Monday at 2 AM
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install safety
+      run: pip install safety
+      
+    - name: Scan Python dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        safety check --json --output safety-report.json || true
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Audit npm dependencies
+      run: |
+        cd frontend
+        npm audit --audit-level=moderate --json > npm-audit.json || true
+        
+    - name: Upload security reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-reports
+        path: |
+          backend/safety-report.json
+          frontend/npm-audit.json
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Run GitLeaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  container-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Build Docker images
+      run: |
+        docker build -t aetherium-backend:scan backend/
+        docker build -t aetherium-frontend:scan frontend/
+        
+    - name: Scan backend image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'aetherium-backend:scan'
+        format: 'sarif'
+        output: 'backend-trivy.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        
+    - name: Scan frontend image
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'aetherium-frontend:scan'
+        format: 'sarif'
+        output: 'frontend-trivy.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        
+    - name: Upload backend Trivy scan results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'backend-trivy.sarif'
+        category: 'backend-container-scan'
+        
+    - name: Upload frontend Trivy scan results
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'frontend-trivy.sarif'
+        category: 'frontend-container-scan'
+
+  code-analysis:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: python, javascript
+        
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+      
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3

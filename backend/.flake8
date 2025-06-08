@@ -1,0 +1,30 @@
+[flake8]
+max-line-length = 88
+extend-ignore = 
+    E203,  # whitespace before ':'
+    E501,  # line too long (handled by black)
+    W503,  # line break before binary operator
+    F401,  # imported but unused (handled by isort)
+exclude = 
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    env,
+    .env,
+    migrations,
+    node_modules,
+    .pytest_cache,
+    htmlcov,
+    .coverage
+per-file-ignores =
+    __init__.py:F401
+    tests/*:F401,F811
+max-complexity = 10
+import-order-style = google
+application-import-names = 
+    models,
+    services,
+    routers,
+    utils,
+    database
